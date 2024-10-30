@@ -1,0 +1,25 @@
+.tracks-container {
+  padding: 20px;
+  display: grid;
+  gap: 20px;
+}
+
+.track-card {
+  border: 1px solid #ddd;
+  padding: 15px;
+  border-radius: 8px;
+  background: white;
+}
+
+.track-image {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+audio {
+  width: 100%;
+  margin-top: 10px;
+}
