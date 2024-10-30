@@ -63,17 +63,52 @@ app.get('/api/track/:sessionId', async (req, res) => {
   res.json(formatTrack(track));
 });
 
+// Добавим функцию для логирования состояния
+const logSessionState = (session, action) => {
+  console.log(`=== ${action} ===`);
+  console.log('History:', session.played.map((item, index) => ({
+    index,
+    trackId: item.trackId,
+    image: item.imageFilename,
+    isCurrent: index === session.currentIndex
+  })));
+  console.log('Current Index:', session.currentIndex);
+};
+
+const MAX_HISTORY = 10;  // Максимальное количество треков в истории
+
 app.get('/api/track/:sessionId/next', async (req, res) => {
   const session = sessions.get(req.params.sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const unplayed = session.tracks.filter(id => !session.played.some(item => item.trackId === id));
-  if (unplayed.length === 0) return res.status(404).json({ error: 'No more tracks available' });
-
   try {
-    const randomIndex = Math.floor(Math.random() * unplayed.length);
-    const nextTrackId = unplayed[randomIndex];
+    // Проверяем, двигались ли мы назад
+    const wasMovingBack = session.currentIndex < session.played.length - 1;
     
+    if (wasMovingBack) {
+      // Если да - начинаем новую историю с текущего трека
+      const currentTrack = session.played[session.currentIndex];
+      session.played = [currentTrack];
+      session.currentIndex = 0;
+    }
+
+    // Если история слишком длинная, удаляем старые треки
+    if (session.played.length >= MAX_HISTORY) {
+      // Удаляем самый старый трек
+      session.played.shift();
+      // Корректируем индекс
+      session.currentIndex--;
+    }
+
+    const unplayed = session.tracks.filter(id => 
+      !session.played.some(item => item.trackId === id)
+    );
+
+    if (unplayed.length === 0) {
+      return res.status(404).json({ error: 'No more tracks' });
+    }
+
+    const nextTrackId = unplayed[Math.floor(Math.random() * unplayed.length)];
     const track = await prisma.track.findUnique({
       where: { id: nextTrackId }
     });
@@ -82,16 +117,9 @@ app.get('/api/track/:sessionId/next', async (req, res) => {
       return res.status(404).json({ error: 'Track not found' });
     }
 
-    // Получаем случайное изображение только если его еще нет для этого трека
-    let imageFilename;
-    const existingTrack = session.played.find(item => item.trackId === track.id);
-    if (existingTrack) {
-      imageFilename = existingTrack.imageFilename;
-    } else {
-      imageFilename = await getRandomImage();
-    }
+    const imageFilename = await getRandomImage();
     
-    // Сохраняем в истории
+    // Добавляем новый трек в историю
     session.played.push({
       trackId: track.id,
       imageFilename
@@ -107,25 +135,19 @@ app.get('/api/track/:sessionId/next', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting next track:', error);
+    console.error('Error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-const MAX_HISTORY = 10;  // Ограничение истории
 
 app.get('/api/track/:sessionId/prev', async (req, res) => {
   const session = sessions.get(req.params.sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   
+  logSessionState(session, 'PREV - Before');
+
   if (session.currentIndex <= 0) {
     return res.status(404).json({ error: 'No previous tracks' });
-  }
-
-  // Очистка старой истории
-  if (session.played.length > MAX_HISTORY) {
-    session.played = session.played.slice(-MAX_HISTORY);
-    session.currentIndex = Math.min(session.currentIndex, MAX_HISTORY - 1);
   }
 
   try {
@@ -139,7 +161,9 @@ app.get('/api/track/:sessionId/prev', async (req, res) => {
     if (!track) {
       return res.status(404).json({ error: 'Track not found' });
     }
-    
+
+    logSessionState(session, 'PREV - After');
+
     res.json({
       id: track.id,
       title: path.basename(track.filename, '.mp3'),
@@ -149,7 +173,7 @@ app.get('/api/track/:sessionId/prev', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting previous track:', error);
+    console.error('Error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -185,5 +209,10 @@ const getRandomImage = async () => {
   }
 };
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(3000, () => {
+    console.log('Server is running on port 3000');
+  });
+}
+
+module.exports = app;
