@@ -21,7 +21,8 @@ const TrackViewer = () => {
 
   const formatUrl = useMemo(() => (path) => {
     if (!path) return '';
-    return path.startsWith('http') ? path : `${AUDIO_BASE_URL}${path}`;
+    if (path.startsWith('http')) return path;
+    return `${AUDIO_BASE_URL}${path}`;
   }, []);
 
   const formatTrackData = useMemo(() => (data) => {
@@ -95,17 +96,11 @@ const TrackViewer = () => {
 
       const formattedData = formatTrackData(data);
 
-      if (direction > 0) {
-        setNextTrack(formattedData);
-        setPrevTrack(null);
-      } else {
-        setPrevTrack(formattedData);
-        setNextTrack(null);
-      }
-
+      setCurrentTrack(formattedData);
+      
       setSlideDirection(direction);
+      
       setTimeout(() => {
-        setCurrentTrack(formattedData);
         setSlideDirection(0);
         isAnimating.current = false;
       }, SLIDE_DURATION);

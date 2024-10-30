@@ -13,7 +13,8 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/images', express.static(path.join(__dirname, '..', 'uploads', 'images')));
+app.use('/audio', express.static(path.join(__dirname, '..', 'uploads', 'audio')));
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
@@ -69,39 +70,88 @@ app.get('/api/track/:sessionId/next', async (req, res) => {
   const unplayed = session.tracks.filter(id => !session.played.some(item => item.trackId === id));
   if (unplayed.length === 0) return res.status(404).json({ error: 'No more tracks available' });
 
-  const randomIndex = Math.floor(Math.random() * unplayed.length);
-  const nextTrackId = unplayed[randomIndex];
-  const randomImage = await prisma.image.findUnique({ where: { trackId: nextTrackId } });
+  try {
+    const randomIndex = Math.floor(Math.random() * unplayed.length);
+    const nextTrackId = unplayed[randomIndex];
+    
+    const track = await prisma.track.findUnique({
+      where: { id: nextTrackId }
+    });
 
-  session.played.push({ trackId: nextTrackId, imageFilename: randomImage.filename });
-  session.currentIndex++;
+    if (!track) {
+      return res.status(404).json({ error: 'Track not found' });
+    }
 
-  const track = await prisma.track.findUnique({ where: { id: nextTrackId } });
-  res.json({
-    id: track.id,
-    title: path.basename(track.filename, '.mp3'),
-    artist: 'Unknown Artist',
-    audioFile: `/uploads/audio/${track.filename}`,
-    imageFile: `/uploads/images/${randomImage.filename}`
-  });
+    // Получаем случайное изображение только если его еще нет для этого трека
+    let imageFilename;
+    const existingTrack = session.played.find(item => item.trackId === track.id);
+    if (existingTrack) {
+      imageFilename = existingTrack.imageFilename;
+    } else {
+      imageFilename = await getRandomImage();
+    }
+    
+    // Сохраняем в истории
+    session.played.push({
+      trackId: track.id,
+      imageFilename
+    });
+    session.currentIndex++;
+
+    res.json({
+      id: track.id,
+      title: path.basename(track.filename, '.mp3'),
+      artist: 'Unknown Artist',
+      audioFile: `/audio/${track.filename}`,
+      imageFile: `/images/${imageFilename}`
+    });
+
+  } catch (error) {
+    console.error('Error getting next track:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
+
+const MAX_HISTORY = 10;  // Ограничение истории
 
 app.get('/api/track/:sessionId/prev', async (req, res) => {
   const session = sessions.get(req.params.sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  if (session.currentIndex <= 0) return res.status(404).json({ error: 'No previous tracks' });
+  
+  if (session.currentIndex <= 0) {
+    return res.status(404).json({ error: 'No previous tracks' });
+  }
 
-  session.currentIndex--;
-  const prevItem = session.played[session.currentIndex];
-  const track = await prisma.track.findUnique({ where: { id: prevItem.trackId } });
+  // Очистка старой истории
+  if (session.played.length > MAX_HISTORY) {
+    session.played = session.played.slice(-MAX_HISTORY);
+    session.currentIndex = Math.min(session.currentIndex, MAX_HISTORY - 1);
+  }
 
-  res.json({
-    id: track.id,
-    title: path.basename(track.filename, '.mp3'),
-    artist: 'Unknown Artist',
-    audioFile: `/uploads/audio/${track.filename}`,
-    imageFile: `/uploads/images/${prevItem.imageFilename}`
-  });
+  try {
+    session.currentIndex--;
+    const prevItem = session.played[session.currentIndex];
+    
+    const track = await prisma.track.findUnique({
+      where: { id: prevItem.trackId }
+    });
+
+    if (!track) {
+      return res.status(404).json({ error: 'Track not found' });
+    }
+    
+    res.json({
+      id: track.id,
+      title: path.basename(track.filename, '.mp3'),
+      artist: 'Unknown Artist',
+      audioFile: `/audio/${track.filename}`,
+      imageFile: `/images/${prevItem.imageFilename}`
+    });
+
+  } catch (error) {
+    console.error('Error getting previous track:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Оптимизация: Мемоизация форматирования трека
@@ -112,12 +162,28 @@ function formatTrack(track) {
     trackFormatCache.set(cacheKey, {
       id: track.id,
       title: path.basename(track.filename, '.mp3'),
-      audioFile: `/uploads/audio/${track.filename}`,
-      imageFile: `/uploads/images/${path.basename(track.filename, '.mp3')}.webp`
+      audioFile: `/audio/${track.filename}`,
+      imageFile: `/images/${path.basename(track.filename, '.mp3')}.webp`
     });
   }
   return trackFormatCache.get(cacheKey);
 }
+
+const getRandomImage = async () => {
+  try {
+    const images = await prisma.image.findMany();
+    if (images.length === 0) {
+      console.error('No images in database');
+      return null;
+    }
+    const randomImage = images[Math.floor(Math.random() * images.length)];
+    console.log('Selected image filename:', randomImage.filename);
+    return randomImage.filename;
+  } catch (error) {
+    console.error('Error getting random image:', error);
+    return null;
+  }
+};
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
