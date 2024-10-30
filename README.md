@@ -20,7 +20,6 @@ Interactive track viewer application with smooth transitions and audio playback.
 
 1. Clone the repository:  git clone https://github.com/Telerave/TR2
 
-Github token	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
 
 
 env:
