@@ -1,13 +1,8 @@
 # Telerave app
 
-Interactive track viewer application with smooth transitions and audio playback.
+Interactive application
 
 ## Features
-- Smooth track transitions with animations
-- Audio playback control
-- Touch and mouse wheel support
-- Session-based track management
-- Image preloading
 
 ## Setup
 
@@ -51,14 +46,7 @@ npx prisma migrate dev
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details
 
 
